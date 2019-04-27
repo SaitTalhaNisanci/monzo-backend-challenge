@@ -40,44 +40,9 @@ func (s *scraper) Scrape() {
 	s.process()
 }
 
-func (s *scraper) processElement(_ int, element *goquery.Selection) {
-	href, exists := element.Attr("href")
-	if exists && s.hasSameDomain(href) {
-		if s.isRelativePath(href) {
-			href = s.prependDomain(href)
-		}
-		if !s.isScraped(href) {
-			s.addToVisited(href)
-			s.urlChan <- href
-		}
-	}
-}
-
-func (s *scraper) hasSameDomain(href string) bool {
-	parsedUrl, err := neturl.Parse(href)
-	if err != nil {
-		return false
-	}
-	if !parsedUrl.IsAbs() {
-		return true
-	}
-	return parsedUrl.Hostname() == s.hostName
-}
-
-func (s *scraper) isRelativePath(url string) bool {
-	if parsedUrl, err := neturl.Parse(url); err == nil {
-		return !parsedUrl.IsAbs()
-	}
-	return false
-}
-
-func (s *scraper) isScraped(url string) bool {
-	_, found := s.visitedUrls.Load(url)
-	return found
-}
-
-func (s *scraper) prependDomain(url string) string {
-	return s.scheme + "://" + s.hostName + url
+func (s *scraper) processElement(_ int, element *goquery.Selection) string {
+	href, _ := element.Attr("href")
+	return href
 }
 
 func (s *scraper) scrape(url string) {
@@ -92,8 +57,43 @@ func (s *scraper) scrape(url string) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	urls := document.Find("a").Map(s.processElement)
+	absoluteUrls := s.convertToAbsolute(urls, url)
+	s.processUrls(absoluteUrls)
+}
 
-	document.Find("a").Each(s.processElement)
+func (s *scraper) convertToAbsolute(urls []string, baseUrl string) []string {
+	absoluteUrls := make([]string, 0)
+	for _, url := range urls {
+		absoluteUrls = append(absoluteUrls, absoluteUrl(url, baseUrl))
+	}
+	return absoluteUrls
+}
+
+func (s *scraper) processUrls(absoluteUrls []string) {
+	for _, url := range absoluteUrls {
+		if !s.hasSameDomain(url) || s.isScraped(url) {
+			continue
+		}
+		s.addToVisited(url)
+		s.urlChan <- url
+	}
+}
+
+func (s *scraper) hasSameDomain(href string) bool {
+	parsedUrl, err := neturl.Parse(href)
+	if err != nil {
+		return false
+	}
+	if !parsedUrl.IsAbs() {
+		return true
+	}
+	return parsedUrl.Hostname() == s.hostName
+}
+
+func (s *scraper) isScraped(url string) bool {
+	_, found := s.visitedUrls.Load(url)
+	return found
 }
 
 func (s *scraper) addToVisited(url string) {
