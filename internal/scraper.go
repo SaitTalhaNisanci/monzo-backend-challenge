@@ -10,17 +10,20 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
+const defaultWorkerAmount = 1000
+
 type scraper struct {
-	hostName    string
-	scheme      string
-	urlChan     chan string
-	resultChan  chan string
-	visitedUrls sync.Map
+	hostName     string
+	rootUrl      string
+	visitedUrls  sync.Map
+	workerAmount int
+	urlChan      chan string
+	wg           *sync.WaitGroup
+	done         chan struct{}
 }
 
 func NewScraper(rootUrl string) (*scraper, error) {
 	parsedUrl, err := neturl.Parse(rootUrl)
-	log.Println(parsedUrl.EscapedPath())
 	if err != nil {
 		return nil, err
 	}
@@ -28,16 +31,53 @@ func NewScraper(rootUrl string) (*scraper, error) {
 		return nil, errors.New("the given URL should have a domain part")
 	}
 	s := &scraper{
-		hostName: parsedUrl.Hostname(),
-		scheme:   parsedUrl.Scheme,
-		urlChan:  make(chan string, 1000),
+		hostName:     parsedUrl.Hostname(),
+		rootUrl:      rootUrl,
+		urlChan:      make(chan string, 1000),
+		workerAmount: defaultWorkerAmount,
+		wg:           new(sync.WaitGroup),
+		done:         make(chan struct{}),
 	}
-	s.urlChan <- rootUrl
 	return s, nil
 }
 
 func (s *scraper) Scrape() {
-	s.process()
+	s.startWorkers()
+	s.init()
+	s.wg.Wait()
+	close(s.done)
+}
+
+func (s *scraper) init() {
+	s.processUrl(s.rootUrl)
+}
+
+func (s *scraper) startWorkers() {
+	for i := 0; i < s.workerAmount; i++ {
+		go s.worker(i)
+	}
+}
+
+func (s *scraper) processUrl(url string) {
+	if s.isScraped(url) {
+		return
+	}
+	s.addToVisited(url)
+	s.wg.Add(1)
+	s.urlChan <- url
+}
+
+func (s *scraper) worker(id int) {
+	for {
+		select {
+		case url := <-s.urlChan:
+			log.Println("will process", id, url)
+			s.scrape(url)
+			s.wg.Done()
+		case <-s.done:
+			return
+		}
+	}
 }
 
 func (s *scraper) processElement(_ int, element *goquery.Selection) string {
@@ -55,7 +95,8 @@ func (s *scraper) scrape(url string) {
 
 	document, err := goquery.NewDocumentFromReader(response.Body)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("error", err)
+		return
 	}
 	urls := document.Find("a").Map(s.processElement)
 	absoluteUrls := s.convertToAbsolute(urls, url)
@@ -72,11 +113,10 @@ func (s *scraper) convertToAbsolute(urls []string, baseUrl string) []string {
 
 func (s *scraper) processUrls(absoluteUrls []string) {
 	for _, url := range absoluteUrls {
-		if !s.hasSameDomain(url) || s.isScraped(url) {
+		if !s.hasSameDomain(url) {
 			continue
 		}
-		s.addToVisited(url)
-		s.urlChan <- url
+		s.processUrl(url)
 	}
 }
 
@@ -98,14 +138,4 @@ func (s *scraper) isScraped(url string) bool {
 
 func (s *scraper) addToVisited(url string) {
 	s.visitedUrls.Store(url, struct{}{})
-}
-
-func (s *scraper) process() {
-	for {
-		select {
-		case url := <-s.urlChan:
-			log.Println("will process", url)
-			go s.scrape(url)
-		}
-	}
 }
