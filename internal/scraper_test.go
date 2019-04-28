@@ -22,8 +22,24 @@ func TestScraperMemoryLeakage(t *testing.T) {
 }
 
 func TestNewScraperWithoutDomain(t *testing.T) {
-	_, err := NewScraper("com")
-	assert.Error(t, err)
+	testCases := []struct {
+		rootUrl string
+		err     bool
+	}{
+		{"com", true},
+		{"/a", true},
+		{"ww.bb.cc", true},
+		{"https://monzo.com", false},
+	}
+	for _, testCase := range testCases {
+		_, err := NewScraper(testCase.rootUrl)
+		if testCase.err {
+			assert.Error(t, err)
+		} else {
+			assert.NoError(t, err)
+		}
+
+	}
 }
 
 func assertTrueEventually(t *testing.T, assertions func() bool) {

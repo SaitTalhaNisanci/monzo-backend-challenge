@@ -9,10 +9,15 @@ import (
 
 	"io"
 
+	"time"
+
+	"sync/atomic"
+
 	"github.com/PuerkitoBio/goquery"
 )
 
 const defaultWorkerAmount = 1000
+const defaultConcurrentScrapers = 10000
 
 type scraper struct {
 	hostName     string
@@ -21,7 +26,9 @@ type scraper struct {
 	workerAmount int
 	urlChan      chan string
 	wg           *sync.WaitGroup
+	countingSem  chan struct{}
 	done         chan struct{}
+	client       http.Client
 }
 
 func NewScraper(rootUrl string) (*scraper, error) {
@@ -32,23 +39,30 @@ func NewScraper(rootUrl string) (*scraper, error) {
 	if parsedUrl.Hostname() == "" {
 		return nil, errors.New("the given URL should have a domain part")
 	}
+	timeout := time.Duration(5 * time.Second)
+	client := http.Client{
+		Timeout: timeout,
+	}
 	s := &scraper{
 		hostName:     parsedUrl.Hostname(),
 		rootUrl:      rootUrl,
 		urlChan:      make(chan string, 1000),
+		countingSem:  make(chan struct{}, defaultConcurrentScrapers),
 		workerAmount: defaultWorkerAmount,
 		wg:           new(sync.WaitGroup),
+		client:       client,
 		done:         make(chan struct{}),
 	}
+
 	return s, nil
 }
 
 func (s *scraper) Scrape() {
-	//http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	s.startWorkers()
 	s.init()
 	s.wg.Wait()
 	close(s.done)
+	log.Println("gg")
 }
 
 func (s *scraper) Urls() []string {
@@ -80,14 +94,19 @@ func (s *scraper) processUrl(url string) {
 	s.urlChan <- url
 }
 
+var closedCount int32 = 0
+
 func (s *scraper) worker(id int) {
 	for {
 		select {
 		case url := <-s.urlChan:
-			//log.Println("will process", id, url)
+			s.countingSem <- struct{}{}
 			s.scrape(url)
 			s.wg.Done()
+			<-s.countingSem
 		case <-s.done:
+			atomic.AddInt32(&closedCount, 1)
+			log.Println(closedCount)
 			return
 		}
 	}
@@ -99,7 +118,7 @@ func (s *scraper) processElement(_ int, element *goquery.Selection) string {
 }
 
 func (s *scraper) scrape(url string) {
-	response, err := http.Get(url)
+	response, err := s.client.Get(url)
 	if err != nil {
 		log.Println(err)
 		return
