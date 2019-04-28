@@ -7,6 +7,8 @@ import (
 	neturl "net/url"
 	"sync"
 
+	"io"
+
 	"github.com/PuerkitoBio/goquery"
 )
 
@@ -15,7 +17,7 @@ const defaultWorkerAmount = 1000
 type scraper struct {
 	hostName     string
 	rootUrl      string
-	visitedUrls  sync.Map
+	urls         sync.Map
 	workerAmount int
 	urlChan      chan string
 	wg           *sync.WaitGroup
@@ -42,10 +44,21 @@ func NewScraper(rootUrl string) (*scraper, error) {
 }
 
 func (s *scraper) Scrape() {
+	//http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	s.startWorkers()
 	s.init()
 	s.wg.Wait()
 	close(s.done)
+}
+
+func (s *scraper) Urls() []string {
+	urls := make([]string, 0)
+	rangeF := func(key, _ interface{}) bool {
+		urls = append(urls, key.(string))
+		return true
+	}
+	s.urls.Range(rangeF)
+	return urls
 }
 
 func (s *scraper) init() {
@@ -71,7 +84,7 @@ func (s *scraper) worker(id int) {
 	for {
 		select {
 		case url := <-s.urlChan:
-			log.Println("will process", id, url)
+			//log.Println("will process", id, url)
 			s.scrape(url)
 			s.wg.Done()
 		case <-s.done:
@@ -88,19 +101,22 @@ func (s *scraper) processElement(_ int, element *goquery.Selection) string {
 func (s *scraper) scrape(url string) {
 	response, err := http.Get(url)
 	if err != nil {
-		log.Println("error", err)
+		log.Println(err)
 		return
 	}
 	defer response.Body.Close()
+	absoluteUrls := s.findUrlsInPage(response.Body, url)
+	s.processUrls(absoluteUrls)
+}
 
-	document, err := goquery.NewDocumentFromReader(response.Body)
+func (s *scraper) findUrlsInPage(body io.ReadCloser, url string) []string {
+	document, err := goquery.NewDocumentFromReader(body)
 	if err != nil {
-		log.Println("error", err)
-		return
+		log.Println(err)
+		return nil
 	}
 	urls := document.Find("a").Map(s.processElement)
-	absoluteUrls := s.convertToAbsolute(urls, url)
-	s.processUrls(absoluteUrls)
+	return s.convertToAbsolute(urls, url)
 }
 
 func (s *scraper) convertToAbsolute(urls []string, baseUrl string) []string {
@@ -132,10 +148,10 @@ func (s *scraper) hasSameDomain(href string) bool {
 }
 
 func (s *scraper) isScraped(url string) bool {
-	_, found := s.visitedUrls.Load(url)
+	_, found := s.urls.Load(url)
 	return found
 }
 
 func (s *scraper) addToVisited(url string) {
-	s.visitedUrls.Store(url, struct{}{})
+	s.urls.Store(url, struct{}{})
 }

@@ -3,7 +3,10 @@ package internal
 import "net/url"
 
 func absoluteUrl(currentUrl, baseUrl string) string {
-	parsedUrl, _ := url.Parse(currentUrl)
+	parsedUrl, err := url.Parse(currentUrl)
+	if err != nil {
+		return ""
+	}
 	if parsedUrl.IsAbs() {
 		return parsedUrl.String()
 	}
