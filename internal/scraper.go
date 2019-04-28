@@ -11,13 +11,8 @@ import (
 
 	"time"
 
-	"sync/atomic"
-
 	"github.com/PuerkitoBio/goquery"
 )
-
-const defaultWorkerAmount = 1000
-const defaultConcurrentScrapers = 10000
 
 type scraper struct {
 	hostName     string
@@ -26,12 +21,11 @@ type scraper struct {
 	workerAmount int
 	urlChan      chan string
 	wg           *sync.WaitGroup
-	countingSem  chan struct{}
 	done         chan struct{}
 	client       http.Client
 }
 
-func NewScraper(rootUrl string) (*scraper, error) {
+func NewScraperWithConfig(rootUrl string, config *config) (*scraper, error) {
 	parsedUrl, err := neturl.Parse(rootUrl)
 	if err != nil {
 		return nil, err
@@ -39,7 +33,7 @@ func NewScraper(rootUrl string) (*scraper, error) {
 	if parsedUrl.Hostname() == "" {
 		return nil, errors.New("the given URL should have a domain part")
 	}
-	timeout := time.Duration(5 * time.Second)
+	timeout := time.Duration(config.Timeout())
 	client := http.Client{
 		Timeout: timeout,
 	}
@@ -47,8 +41,7 @@ func NewScraper(rootUrl string) (*scraper, error) {
 		hostName:     parsedUrl.Hostname(),
 		rootUrl:      rootUrl,
 		urlChan:      make(chan string, 1000),
-		countingSem:  make(chan struct{}, defaultConcurrentScrapers),
-		workerAmount: defaultWorkerAmount,
+		workerAmount: config.WorkerAmount(),
 		wg:           new(sync.WaitGroup),
 		client:       client,
 		done:         make(chan struct{}),
@@ -57,12 +50,15 @@ func NewScraper(rootUrl string) (*scraper, error) {
 	return s, nil
 }
 
+func NewScraper(rootUrl string) (*scraper, error) {
+	return NewScraperWithConfig(rootUrl, NewConfig())
+}
+
 func (s *scraper) Scrape() {
 	s.startWorkers()
 	s.init()
 	s.wg.Wait()
 	close(s.done)
-	log.Println("gg")
 }
 
 func (s *scraper) Urls() []string {
@@ -94,19 +90,13 @@ func (s *scraper) processUrl(url string) {
 	s.urlChan <- url
 }
 
-var closedCount int32 = 0
-
 func (s *scraper) worker(id int) {
 	for {
 		select {
 		case url := <-s.urlChan:
-			s.countingSem <- struct{}{}
 			s.scrape(url)
 			s.wg.Done()
-			<-s.countingSem
 		case <-s.done:
-			atomic.AddInt32(&closedCount, 1)
-			log.Println(closedCount)
 			return
 		}
 	}
