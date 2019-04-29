@@ -14,17 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestScraperMemoryLeakage(t *testing.T) {
-	before := runtime.NumGoroutine()
-	scraper, err := New("https://dolarrekorkirdimi.com/")
-	require.NoError(t, err)
-	scraper.Scrape()
-	assertTrueEventually(t, func() bool {
-		after := runtime.NumGoroutine()
-		return after == before
-	})
-}
-
 func TestNewScraper(t *testing.T) {
 	testCases := []struct {
 		rootUrl string
@@ -44,17 +33,6 @@ func TestNewScraper(t *testing.T) {
 		}
 
 	}
-}
-
-func assertTrueEventually(t *testing.T, assertions func() bool) {
-	startTime := time.Now()
-	for time.Since(startTime) < 3*time.Minute {
-		if assertions() {
-			return
-		}
-		time.Sleep(100 * time.Microsecond)
-	}
-	t.Fail()
 }
 
 func TestScraperDoesNotReturnAnyExternalLink(t *testing.T) {
@@ -114,4 +92,26 @@ func TestScraperProcessUrlsInPage(t *testing.T) {
 		assert.Contains(t, urls, url)
 	}
 
+}
+
+func TestScraperRoutineLeakage(t *testing.T) {
+	before := runtime.NumGoroutine()
+	scraper, err := New("https://dolarrekorkirdimi.com/")
+	require.NoError(t, err)
+	scraper.Scrape()
+	assertTrueEventually(t, func() bool {
+		after := runtime.NumGoroutine()
+		return after == before
+	})
+}
+
+func assertTrueEventually(t *testing.T, assertions func() bool) {
+	startTime := time.Now()
+	for time.Since(startTime) < 3*time.Minute {
+		if assertions() {
+			return
+		}
+		time.Sleep(100 * time.Microsecond)
+	}
+	t.Fail()
 }
