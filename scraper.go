@@ -14,25 +14,25 @@ import (
 
 type scraper struct {
 	hostName    string
-	rootUrl     string
+	startUrl    string
 	urls        sync.Map
 	urlChan     chan string
 	countingSem chan struct{}
 	wg          *sync.WaitGroup
-	done        chan struct{}
+	done        chan struct{} // used to terminate process routine.
 	client      http.Client
 }
 
-// New creates a new scraper with rootUrl and the default config.
+// New creates a new scraper with startUrl and the default config.
 // If the given URL does not contain a domain part error is returned.
-func New(rootUrl string) (*scraper, error) {
-	return NewWithConfig(rootUrl, NewConfig())
+func New(startUrl string) (*scraper, error) {
+	return NewWithConfig(startUrl, NewConfig())
 }
 
-// NewWithConfig creates a new scraper with rootUrl and the given config.
+// NewWithConfig creates a new scraper with startUrl and the given config.
 // If the given URL does not contain a domain part error is returned.
-func NewWithConfig(rootUrl string, config *config) (*scraper, error) {
-	parsedUrl, err := neturl.Parse(rootUrl)
+func NewWithConfig(startUrl string, config *config) (*scraper, error) {
+	parsedUrl, err := neturl.Parse(startUrl)
 	if err != nil {
 		return nil, err
 	}
@@ -45,7 +45,7 @@ func NewWithConfig(rootUrl string, config *config) (*scraper, error) {
 
 	s := &scraper{
 		hostName:    parsedUrl.Hostname(),
-		rootUrl:     rootUrl,
+		startUrl:    startUrl,
 		urlChan:     make(chan string, 1000),
 		countingSem: make(chan struct{}, config.MaxWorkerAmount()),
 		wg:          new(sync.WaitGroup),
@@ -60,8 +60,8 @@ func NewWithConfig(rootUrl string, config *config) (*scraper, error) {
 // Each request has a timeout of 'config.Timeout()'.
 func (s *scraper) Scrape() {
 	go s.process()
-	s.init()
-	s.wg.Wait()
+	s.scrapeStartUrl()
+	s.wg.Wait() // wait until all links are scraped.
 	close(s.done)
 }
 
@@ -71,11 +71,10 @@ func (s *scraper) Scrape() {
 // will be returned.
 func (s *scraper) Urls() []string {
 	urls := make([]string, 0)
-	rangeF := func(key, _ interface{}) bool {
+	s.urls.Range(func(key, _ interface{}) bool {
 		urls = append(urls, key.(string))
 		return true
-	}
-	s.urls.Range(rangeF)
+	})
 	return urls
 }
 
@@ -90,8 +89,8 @@ func (s *scraper) process() {
 	}
 }
 
-func (s *scraper) init() {
-	s.processUrl(s.rootUrl)
+func (s *scraper) scrapeStartUrl() {
+	s.processUrl(s.startUrl)
 }
 
 func (s *scraper) processUrl(url string) {
