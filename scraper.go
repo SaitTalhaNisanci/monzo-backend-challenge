@@ -23,10 +23,14 @@ type scraper struct {
 	client      http.Client
 }
 
+// New creates a new scraper with rootUrl and the default config.
+// If the given URL does not contain a domain part error is returned.
 func New(rootUrl string) (*scraper, error) {
 	return NewWithConfig(rootUrl, NewConfig())
 }
 
+// NewWithConfig creates a new scraper with rootUrl and the given config.
+// If the given URL does not contain a domain part error is returned.
 func NewWithConfig(rootUrl string, config *config) (*scraper, error) {
 	parsedUrl, err := neturl.Parse(rootUrl)
 	if err != nil {
@@ -36,7 +40,7 @@ func NewWithConfig(rootUrl string, config *config) (*scraper, error) {
 		return nil, errors.New("the given URL should have a domain part")
 	}
 	client := http.Client{
-		Timeout: config.Timeout(),
+		Timeout: config.ConTimeout(),
 	}
 
 	s := &scraper{
@@ -51,6 +55,9 @@ func NewWithConfig(rootUrl string, config *config) (*scraper, error) {
 	return s, nil
 }
 
+// Scrape will scrape all the links with the same domain starting from the root url.
+// The scraping is done concurrently with the maximum limit of 'config.MaxWorkerAmount()'.
+// Each request has a timeout of 'config.Timeout()'.
 func (s *scraper) Scrape() {
 	go s.process()
 	s.init()
@@ -58,6 +65,10 @@ func (s *scraper) Scrape() {
 	close(s.done)
 }
 
+// Urls returns all the scraped urls starting from the root url.
+// If this function is called before `scraper.Scrape()` method returns
+// the returned urls will not be complete, however a snapshot of the urls
+// will be returned.
 func (s *scraper) Urls() []string {
 	urls := make([]string, 0)
 	rangeF := func(key, _ interface{}) bool {
