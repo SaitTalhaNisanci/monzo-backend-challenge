@@ -42,3 +42,21 @@ func TestAbsoluteUrlWhenRelativeGiven(t *testing.T) {
 		assert.Equal(t, testCase.expectedUrl, actualUrl)
 	}
 }
+
+func TestHasSameDomain(t *testing.T) {
+	testCases := []struct {
+		href   string
+		domain string
+		same   bool
+	}{
+		{"https://monzo.com", "monzo.com", true},
+		{"https://monzo.com", "google.com", false},
+		{"https://monzo.com/asd/c/e", "monzo.com", true},
+		{"https://google.com/careers/", "google.com", true},
+	}
+
+	for _, testCase := range testCases {
+		same := hasSameDomain(testCase.href, testCase.domain)
+		assert.Equal(t, same, testCase.same)
+	}
+}

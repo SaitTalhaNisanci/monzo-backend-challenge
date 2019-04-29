@@ -2,27 +2,27 @@ package internal
 
 import "time"
 
-const defaultWorkerAmount = 1000
+const defaultMaxWorkerAmount = 1000
 const defaultTimeout = 10 * time.Second
 
 type config struct {
-	workerAmount int
-	timeout      time.Duration
+	maxWorkerAmount int
+	timeout         time.Duration
 }
 
 func NewConfig() *config {
 	return &config{
-		workerAmount: defaultWorkerAmount,
-		timeout:      defaultTimeout,
+		maxWorkerAmount: defaultMaxWorkerAmount,
+		timeout:         defaultTimeout,
 	}
 }
 
-func (c *config) SetWorkerAmount(amount int) {
-	c.workerAmount = amount
+func (c *config) SetMaxWorkerAmount(amount int) {
+	c.maxWorkerAmount = amount
 }
 
-func (c *config) WorkerAmount() int {
-	return c.workerAmount
+func (c *config) MaxWorkerAmount() int {
+	return c.maxWorkerAmount
 }
 
 func (c *config) SetTimeout(timeout time.Duration) {

@@ -15,14 +15,18 @@ import (
 )
 
 type scraper struct {
-	hostName     string
-	rootUrl      string
-	urls         sync.Map
-	workerAmount int
-	urlChan      chan string
-	wg           *sync.WaitGroup
-	done         chan struct{}
-	client       http.Client
+	hostName    string
+	rootUrl     string
+	urls        sync.Map
+	urlChan     chan string
+	countingSem chan struct{}
+	wg          *sync.WaitGroup
+	done        chan struct{}
+	client      http.Client
+}
+
+func NewScraper(rootUrl string) (*scraper, error) {
+	return NewScraperWithConfig(rootUrl, NewConfig())
 }
 
 func NewScraperWithConfig(rootUrl string, config *config) (*scraper, error) {
@@ -38,24 +42,20 @@ func NewScraperWithConfig(rootUrl string, config *config) (*scraper, error) {
 		Timeout: timeout,
 	}
 	s := &scraper{
-		hostName:     parsedUrl.Hostname(),
-		rootUrl:      rootUrl,
-		urlChan:      make(chan string, 1000),
-		workerAmount: config.WorkerAmount(),
-		wg:           new(sync.WaitGroup),
-		client:       client,
-		done:         make(chan struct{}),
+		hostName:    parsedUrl.Hostname(),
+		rootUrl:     rootUrl,
+		urlChan:     make(chan string, 1000),
+		countingSem: make(chan struct{}, config.MaxWorkerAmount()),
+		wg:          new(sync.WaitGroup),
+		client:      client,
+		done:        make(chan struct{}),
 	}
 
 	return s, nil
 }
 
-func NewScraper(rootUrl string) (*scraper, error) {
-	return NewScraperWithConfig(rootUrl, NewConfig())
-}
-
 func (s *scraper) Scrape() {
-	s.startWorkers()
+	go s.process()
 	s.init()
 	s.wg.Wait()
 	close(s.done)
@@ -71,89 +71,28 @@ func (s *scraper) Urls() []string {
 	return urls
 }
 
-func (s *scraper) init() {
-	s.processUrl(s.rootUrl)
-}
-
-func (s *scraper) startWorkers() {
-	for i := 0; i < s.workerAmount; i++ {
-		go s.worker(i)
-	}
-}
-
-func (s *scraper) processUrl(url string) {
-	if s.isScraped(url) {
-		return
-	}
-	s.addToVisited(url)
-	s.wg.Add(1)
-	s.urlChan <- url
-}
-
-func (s *scraper) worker(id int) {
+func (s *scraper) process() {
 	for {
 		select {
 		case url := <-s.urlChan:
-			s.scrape(url)
-			s.wg.Done()
+			go s.scrape(url)
 		case <-s.done:
 			return
 		}
 	}
 }
 
-func (s *scraper) processElement(_ int, element *goquery.Selection) string {
-	href, _ := element.Attr("href")
-	return href
+func (s *scraper) init() {
+	s.processUrl(s.rootUrl)
 }
 
-func (s *scraper) scrape(url string) {
-	response, err := s.client.Get(url)
-	if err != nil {
-		log.Println(err)
+func (s *scraper) processUrl(url string) {
+	if s.isScraped(url) {
 		return
 	}
-	defer response.Body.Close()
-	absoluteUrls := s.findUrlsInPage(response.Body, url)
-	s.processUrls(absoluteUrls)
-}
-
-func (s *scraper) findUrlsInPage(body io.ReadCloser, url string) []string {
-	document, err := goquery.NewDocumentFromReader(body)
-	if err != nil {
-		log.Println(err)
-		return nil
-	}
-	urls := document.Find("a").Map(s.processElement)
-	return s.convertToAbsolute(urls, url)
-}
-
-func (s *scraper) convertToAbsolute(urls []string, baseUrl string) []string {
-	absoluteUrls := make([]string, 0)
-	for _, url := range urls {
-		absoluteUrls = append(absoluteUrls, absoluteUrl(url, baseUrl))
-	}
-	return absoluteUrls
-}
-
-func (s *scraper) processUrls(absoluteUrls []string) {
-	for _, url := range absoluteUrls {
-		if !s.hasSameDomain(url) {
-			continue
-		}
-		s.processUrl(url)
-	}
-}
-
-func (s *scraper) hasSameDomain(href string) bool {
-	parsedUrl, err := neturl.Parse(href)
-	if err != nil {
-		return false
-	}
-	if !parsedUrl.IsAbs() {
-		return true
-	}
-	return parsedUrl.Hostname() == s.hostName
+	s.addToUrls(url)
+	s.wg.Add(1)
+	s.urlChan <- url
 }
 
 func (s *scraper) isScraped(url string) bool {
@@ -161,6 +100,43 @@ func (s *scraper) isScraped(url string) bool {
 	return found
 }
 
-func (s *scraper) addToVisited(url string) {
+func (s *scraper) addToUrls(url string) {
 	s.urls.Store(url, struct{}{})
+}
+
+func (s *scraper) scrape(url string) {
+	s.preScrape()
+	defer s.postScrape()
+	response, err := s.client.Get(url)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	defer response.Body.Close()
+	s.processUrlsInPage(response.Body, url)
+}
+
+func (s *scraper) preScrape() {
+	s.countingSem <- struct{}{}
+}
+
+func (s *scraper) postScrape() {
+	s.wg.Done()
+	<-s.countingSem
+}
+
+func (s *scraper) processUrlsInPage(body io.ReadCloser, baseUrl string) {
+	document, err := goquery.NewDocumentFromReader(body)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	document.Find("a").Each(func(_ int, element *goquery.Selection) {
+		if href, exists := element.Attr("href"); exists {
+			absoluteUrl := absoluteUrl(href, baseUrl)
+			if hasSameDomain(absoluteUrl, s.hostName) {
+				s.processUrl(absoluteUrl)
+			}
+		}
+	})
 }

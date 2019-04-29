@@ -6,6 +6,8 @@ import (
 
 	"time"
 
+	"log"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,7 +23,7 @@ func TestScraperMemoryLeakage(t *testing.T) {
 	})
 }
 
-func TestNewScraperWithoutDomain(t *testing.T) {
+func TestNewScraper(t *testing.T) {
 	testCases := []struct {
 		rootUrl string
 		err     bool
@@ -61,6 +63,7 @@ func TestScraperDoesNotReturnAnyExternalLink(t *testing.T) {
 	urls := scraper.Urls()
 	assert.NotZero(t, len(urls))
 	for _, url := range urls {
+		log.Println(url)
 		assert.Contains(t, url, domain)
 	}
 }

@@ -13,3 +13,14 @@ func absoluteUrl(currentUrl, baseUrl string) string {
 	base, _ := url.Parse(baseUrl)
 	return base.ResolveReference(parsedUrl).String()
 }
+
+func hasSameDomain(href string, domain string) bool {
+	parsedUrl, err := url.Parse(href)
+	if err != nil {
+		return false
+	}
+	if !parsedUrl.IsAbs() {
+		return true
+	}
+	return parsedUrl.Hostname() == domain
+}
