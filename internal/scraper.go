@@ -134,7 +134,7 @@ func (s *scraper) processUrlsInPage(body io.ReadCloser, baseUrl string) {
 	document.Find("a").Each(func(_ int, element *goquery.Selection) {
 		if href, exists := element.Attr("href"); exists {
 			absoluteUrl := absoluteUrl(href, baseUrl)
-			if hasSameDomain(absoluteUrl, s.hostName) {
+			if absoluteUrl != "" && hasSameDomain(absoluteUrl, s.hostName) {
 				s.processUrl(absoluteUrl)
 			}
 		}

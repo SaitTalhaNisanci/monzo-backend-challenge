@@ -3,7 +3,7 @@ package internal
 import "time"
 
 const defaultMaxWorkerAmount = 1000
-const defaultTimeout = 10 * time.Second
+const defaultTimeout = 1 * time.Minute
 
 type config struct {
 	maxWorkerAmount int

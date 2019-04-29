@@ -6,8 +6,6 @@ import (
 
 	"time"
 
-	"log"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -56,14 +54,13 @@ func assertTrueEventually(t *testing.T, assertions func() bool) {
 }
 
 func TestScraperDoesNotReturnAnyExternalLink(t *testing.T) {
-	domain := "https://www.monzo.com/"
-	scraper, err := NewScraper(domain)
+	root := "https://www.monzo.com/"
+	scraper, err := NewScraper(root)
 	require.NoError(t, err)
 	scraper.Scrape()
 	urls := scraper.Urls()
 	assert.NotZero(t, len(urls))
 	for _, url := range urls {
-		log.Println(url)
-		assert.Contains(t, url, domain)
+		assert.Contains(t, url, scraper.hostName)
 	}
 }
