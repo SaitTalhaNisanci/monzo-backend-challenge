@@ -1,4 +1,4 @@
-package internal
+package scraper
 
 import (
 	"errors"
@@ -8,8 +8,6 @@ import (
 	"sync"
 
 	"io"
-
-	"time"
 
 	"github.com/PuerkitoBio/goquery"
 )
@@ -25,11 +23,11 @@ type scraper struct {
 	client      http.Client
 }
 
-func NewScraper(rootUrl string) (*scraper, error) {
-	return NewScraperWithConfig(rootUrl, NewConfig())
+func New(rootUrl string) (*scraper, error) {
+	return NewWithConfig(rootUrl, NewConfig())
 }
 
-func NewScraperWithConfig(rootUrl string, config *config) (*scraper, error) {
+func NewWithConfig(rootUrl string, config *config) (*scraper, error) {
 	parsedUrl, err := neturl.Parse(rootUrl)
 	if err != nil {
 		return nil, err
@@ -37,10 +35,10 @@ func NewScraperWithConfig(rootUrl string, config *config) (*scraper, error) {
 	if parsedUrl.Hostname() == "" {
 		return nil, errors.New("the given URL should have a domain part")
 	}
-	timeout := time.Duration(config.Timeout())
 	client := http.Client{
-		Timeout: timeout,
+		Timeout: config.Timeout(),
 	}
+
 	s := &scraper{
 		hostName:    parsedUrl.Hostname(),
 		rootUrl:     rootUrl,
@@ -50,7 +48,6 @@ func NewScraperWithConfig(rootUrl string, config *config) (*scraper, error) {
 		client:      client,
 		done:        make(chan struct{}),
 	}
-
 	return s, nil
 }
 

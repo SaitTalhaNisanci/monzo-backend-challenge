@@ -1,4 +1,4 @@
-package internal
+package scraper
 
 import (
 	"runtime"
@@ -12,7 +12,7 @@ import (
 
 func TestScraperMemoryLeakage(t *testing.T) {
 	before := runtime.NumGoroutine()
-	scraper, err := NewScraper("https://www.monzo.com/")
+	scraper, err := New("https://dolarrekorkirdimi.com/")
 	require.NoError(t, err)
 	scraper.Scrape()
 	assertTrueEventually(t, func() bool {
@@ -32,7 +32,7 @@ func TestNewScraper(t *testing.T) {
 		{"https://monzo.com", false},
 	}
 	for _, testCase := range testCases {
-		_, err := NewScraper(testCase.rootUrl)
+		_, err := New(testCase.rootUrl)
 		if testCase.err {
 			assert.Error(t, err)
 		} else {
@@ -48,19 +48,19 @@ func assertTrueEventually(t *testing.T, assertions func() bool) {
 		if assertions() {
 			return
 		}
-		time.Sleep(10 * time.Microsecond)
+		time.Sleep(100 * time.Microsecond)
 	}
 	t.Fail()
 }
 
 func TestScraperDoesNotReturnAnyExternalLink(t *testing.T) {
-	root := "https://www.monzo.com/"
-	scraper, err := NewScraper(root)
+	root := "http://www.monzo.com"
+	scraper, err := New(root)
 	require.NoError(t, err)
 	scraper.Scrape()
 	urls := scraper.Urls()
 	assert.NotZero(t, len(urls))
 	for _, url := range urls {
-		assert.Contains(t, url, scraper.hostName)
+		assert.True(t, hasSameDomain(url, scraper.hostName))
 	}
 }
