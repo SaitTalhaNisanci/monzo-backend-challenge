@@ -6,6 +6,10 @@ import (
 
 	"time"
 
+	"io/ioutil"
+
+	"bytes"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -63,4 +67,51 @@ func TestScraperDoesNotReturnAnyExternalLink(t *testing.T) {
 	for _, url := range urls {
 		assert.True(t, hasSameDomain(url, scraper.hostName))
 	}
+}
+
+func TestScraperProcessUrlsInPage(t *testing.T) {
+
+	expectedUrls := []string{
+		"https://monzo.com/",
+		"https://monzo.com/about",
+		"https://monzo.com/blog",
+		"https://monzo.com/community",
+		"https://monzo.com/help",
+		"https://monzo.com/download",
+		"https://monzo.com/business",
+		"https://monzo.com/features/apple-pay",
+		"https://monzo.com/features/google-pay",
+		"https://monzo.com/features/travel",
+		"https://monzo.com/features/switch",
+		"https://monzo.com/features/overdrafts",
+		"https://monzo.com/press",
+		"https://monzo.com/careers",
+		"https://monzo.com/tone-of-voice",
+		"https://monzo.com/blog/how-money-works",
+		"https://monzo.com/transparency",
+		"https://monzo.com/community/making-monzo",
+		"https://monzo.com/faq",
+		"https://monzo.com/legal/terms-and-conditions",
+		"https://monzo.com/legal/fscs-information",
+		"https://monzo.com/legal/privacy-policy",
+		"https://monzo.com/legal/cookie-policy",
+		"https://monzo.com/cdn-cgi/l/email-protection#751d10190535181a1b0f1a5b161a18",
+		"https://monzo.com/cdn-cgi/l/email-protection#ff979a938fbf9290918590d19c9092",
+	}
+
+	body, err := ioutil.ReadFile("./testData/page.html")
+	rootUrl := "https://monzo.com"
+	require.NoError(t, err)
+	scraper, err := New(rootUrl)
+	require.NoError(t, err)
+	scraper.processUrlsInPage(ioutil.NopCloser(bytes.NewReader(body)), rootUrl)
+	urls := scraper.Urls()
+	assert.Equal(t, len(expectedUrls), len(urls))
+	for _, url := range urls {
+		assert.Contains(t, expectedUrls, url)
+	}
+	for _, url := range expectedUrls {
+		assert.Contains(t, urls, url)
+	}
+
 }
